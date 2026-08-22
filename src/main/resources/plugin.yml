@@ -1,0 +1,25 @@
+name: CrystallAC
+version: '1.0.0-RELEASE'
+main: com.crystallac.CrystallAC
+api-version: '1.21'
+author: CrystallAC Team
+description: Advanced Anti-Cheat with Unsupervised Anomaly Detection & Incremental Learning
+softdepend: [ProtocolLib]
+
+commands:
+  anticheat:
+    description: Crystall Anti-Cheat master command
+    aliases: [ac, crystallac]
+    permission: crystallac.admin
+    usage: /ac <check|stats|ban|reload|alerts>
+
+permissions:
+  crystallac.admin:
+    description: Grants full access to all CrystallAC admin commands
+    default: op
+  crystallac.alerts:
+    description: Allows receiving in-game cheat alerts
+    default: op
+  crystallac.bypass:
+    description: Bypasses all anti-cheat checks
+    default: false

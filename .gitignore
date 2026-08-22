@@ -1,0 +1,8 @@
+target/
+.tools/
+run-server/
+*.db
+logs/
+.idea/
+*.iml
+.vscode/
