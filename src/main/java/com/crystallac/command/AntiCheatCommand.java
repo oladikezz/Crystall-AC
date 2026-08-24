@@ -3,6 +3,8 @@ package com.crystallac.command;
 import com.crystallac.CrystallAC;
 import com.crystallac.check.CheckType;
 import com.crystallac.data.PlayerData;
+import com.crystallac.gui.AdminDashboardGUI;
+import com.crystallac.gui.PlayerInspectorGUI;
 import com.crystallac.ml.FeatureSnapshot;
 import com.crystallac.statistical.PlayerBaselineTracker;
 import org.bukkit.Bukkit;
@@ -18,9 +20,13 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Command executor for all /ac administrator operations:
+ * Command executor for all /ac administrator and moderation operations:
+ * - /ac gui [player]
  * - /ac check <player>
  * - /ac stats <player>
+ * - /ac freeze <player>
+ * - /ac unfreeze <player>
+ * - /ac spectate <player|stop>
  * - /ac ban <player> <reason>
  * - /ac reload
  * - /ac alerts
@@ -41,20 +47,113 @@ public class AntiCheatCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 0) {
-            sendHelp(sender);
+            if (sender instanceof Player player) {
+                AdminDashboardGUI.open(player, plugin);
+            } else {
+                sendHelp(sender);
+            }
             return true;
         }
 
         String sub = args[0].toLowerCase();
         switch (sub) {
+            case "gui", "menu" -> handleGui(sender, args);
             case "check" -> handleCheck(sender, args);
             case "stats" -> handleStats(sender, args);
+            case "freeze" -> handleFreeze(sender, args);
+            case "unfreeze" -> handleUnfreeze(sender, args);
+            case "spectate", "spec" -> handleSpectate(sender, args);
             case "ban" -> handleBan(sender, args);
             case "reload" -> handleReload(sender);
             case "alerts" -> handleAlerts(sender);
             default -> sendHelp(sender);
         }
         return true;
+    }
+
+    private void handleGui(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(ChatColor.RED + "This command can only be executed by in-game players.");
+            return;
+        }
+
+        if (args.length >= 2) {
+            Player target = Bukkit.getPlayer(args[1]);
+            if (target != null && target.isOnline()) {
+                PlayerInspectorGUI.open(player, target, plugin);
+            } else {
+                sender.sendMessage(ChatColor.RED + "Player not found or offline.");
+            }
+        } else {
+            AdminDashboardGUI.open(player, plugin);
+        }
+    }
+
+    private void handleFreeze(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.RED + "Usage: /ac freeze <player>");
+            return;
+        }
+
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null || !target.isOnline()) {
+            sender.sendMessage(ChatColor.RED + "Player not found or offline.");
+            return;
+        }
+
+        Player staff = (sender instanceof Player p) ? p : null;
+        plugin.getFreezeManager().freezePlayer(staff != null ? staff : target, target);
+        if (staff == null) {
+            sender.sendMessage(ChatColor.GREEN + "Frozen player " + target.getName());
+        }
+    }
+
+    private void handleUnfreeze(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.RED + "Usage: /ac unfreeze <player>");
+            return;
+        }
+
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null || !target.isOnline()) {
+            sender.sendMessage(ChatColor.RED + "Player not found or offline.");
+            return;
+        }
+
+        Player staff = (sender instanceof Player p) ? p : null;
+        plugin.getFreezeManager().unfreezePlayer(staff, target);
+        if (staff == null) {
+            sender.sendMessage(ChatColor.GREEN + "Unfrozen player " + target.getName());
+        }
+    }
+
+    private void handleSpectate(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(ChatColor.RED + "Only players can spectate.");
+            return;
+        }
+
+        if (args.length < 2) {
+            if (plugin.getSpectateManager().isSpectating(player)) {
+                plugin.getSpectateManager().stopSpectating(player);
+            } else {
+                sender.sendMessage(ChatColor.RED + "Usage: /ac spectate <player|stop>");
+            }
+            return;
+        }
+
+        if (args[1].equalsIgnoreCase("stop")) {
+            plugin.getSpectateManager().stopSpectating(player);
+            return;
+        }
+
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null || !target.isOnline()) {
+            sender.sendMessage(ChatColor.RED + "Target player not found or offline.");
+            return;
+        }
+
+        plugin.getSpectateManager().startSpectating(player, target);
     }
 
     private void handleCheck(CommandSender sender, String[] args) {
@@ -135,7 +234,6 @@ public class AntiCheatCommand implements CommandExecutor, TabCompleter {
 
         if (data != null) {
             List<FeatureSnapshot> snapshots = data.getFeatureBuffer().getSnapshots();
-            // 1. Save labeled dataset of features for ML training
             plugin.getBanDatasetRepository().saveLabeledBan(
                     target.getUniqueId(),
                     target.getName(),
@@ -144,11 +242,14 @@ public class AntiCheatCommand implements CommandExecutor, TabCompleter {
                     snapshots
             );
 
-            // 2. Trigger retraining evaluation if dataset threshold is satisfied
             plugin.getModelTuner().evaluateAndRetrain();
         }
 
-        // Execute ban
+        // Discord webhook alert
+        if (plugin.getDiscordWebhookManager() != null) {
+            plugin.getDiscordWebhookManager().sendBanAlert(target, reason, sender.getName());
+        }
+
         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "ban " + target.getName() + " [CrystallAC] Confirmed " + reason);
         sender.sendMessage(ChatColor.GREEN + "Player " + target.getName() + " banned and labeled feature dataset saved to SQLite.");
     }
@@ -169,8 +270,12 @@ public class AntiCheatCommand implements CommandExecutor, TabCompleter {
 
     private void sendHelp(CommandSender sender) {
         sender.sendMessage(ChatColor.AQUA + "=== CrystallAC Commands ===");
+        sender.sendMessage(ChatColor.YELLOW + "/ac gui [player]" + ChatColor.GRAY + " - Open interactive Admin Dashboard / Inspector");
         sender.sendMessage(ChatColor.YELLOW + "/ac check <player>" + ChatColor.GRAY + " - Inspect real-time checks & VLs");
         sender.sendMessage(ChatColor.YELLOW + "/ac stats <player>" + ChatColor.GRAY + " - View unsupervised statistical baseline");
+        sender.sendMessage(ChatColor.YELLOW + "/ac freeze <player>" + ChatColor.GRAY + " - Freeze player for screen-share / audit");
+        sender.sendMessage(ChatColor.YELLOW + "/ac unfreeze <player>" + ChatColor.GRAY + " - Unfreeze player");
+        sender.sendMessage(ChatColor.YELLOW + "/ac spectate <player|stop>" + ChatColor.GRAY + " - Spectate player with live Action Bar HUD");
         sender.sendMessage(ChatColor.YELLOW + "/ac ban <player> <reason>" + ChatColor.GRAY + " - Ban & record labeled training buffer");
         sender.sendMessage(ChatColor.YELLOW + "/ac reload" + ChatColor.GRAY + " - Reload config and recalculate thresholds");
         sender.sendMessage(ChatColor.YELLOW + "/ac alerts" + ChatColor.GRAY + " - Toggle on-screen staff alerts");
@@ -179,17 +284,23 @@ public class AntiCheatCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return Arrays.asList("check", "stats", "ban", "reload", "alerts");
+            return Arrays.asList("gui", "check", "stats", "freeze", "unfreeze", "spectate", "ban", "reload", "alerts");
         }
-        if (args.length == 2 && (args[0].equalsIgnoreCase("check") || args[0].equalsIgnoreCase("stats") || args[0].equalsIgnoreCase("ban"))) {
+        if (args.length == 2 && (args[0].equalsIgnoreCase("check") || args[0].equalsIgnoreCase("stats") ||
+                                 args[0].equalsIgnoreCase("ban") || args[0].equalsIgnoreCase("freeze") ||
+                                 args[0].equalsIgnoreCase("unfreeze") || args[0].equalsIgnoreCase("spectate") ||
+                                 args[0].equalsIgnoreCase("gui"))) {
             List<String> players = new ArrayList<>();
+            if (args[0].equalsIgnoreCase("spectate")) {
+                players.add("stop");
+            }
             for (Player p : Bukkit.getOnlinePlayers()) {
                 players.add(p.getName());
             }
             return players;
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("ban")) {
-            return Arrays.asList("Killaura", "Reach", "Speed", "Fly", "Autoclicker", "Aimbot", "Timer");
+            return Arrays.asList("Killaura", "Reach", "Speed", "Fly", "Autoclicker", "Aimbot", "Timer", "Scaffold", "FastPlace", "FastBreak");
         }
         return List.of();
     }

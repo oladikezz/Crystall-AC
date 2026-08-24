@@ -3,6 +3,7 @@ package com.crystallac.punishment;
 import com.crystallac.check.CheckType;
 import com.crystallac.data.PlayerData;
 import com.crystallac.data.PlayerDataManager;
+import com.crystallac.discord.DiscordWebhookManager;
 import com.crystallac.statistical.AnomalyDetector;
 import com.crystallac.storage.AuditLogger;
 import org.bukkit.Bukkit;
@@ -10,14 +11,13 @@ import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Coordinates violation level (VL) accrual, statistical scaling, staff alert broadcasting,
- * decay processing, and punishment execution.
+ * Discord webhooks dispatch, decay processing, and punishment execution.
  */
 public class ViolationManager {
 
@@ -26,18 +26,21 @@ public class ViolationManager {
     private final PunishmentManager punishmentManager;
     private final AuditLogger auditLogger;
     private final AnomalyDetector anomalyDetector;
+    private final DiscordWebhookManager discordWebhookManager;
     private final Set<UUID> alertSubscribers = ConcurrentHashMap.newKeySet();
 
     public ViolationManager(JavaPlugin plugin,
                             PlayerDataManager dataManager,
                             PunishmentManager punishmentManager,
                             AuditLogger auditLogger,
-                            AnomalyDetector anomalyDetector) {
+                            AnomalyDetector anomalyDetector,
+                            DiscordWebhookManager discordWebhookManager) {
         this.plugin = plugin;
         this.dataManager = dataManager;
         this.punishmentManager = punishmentManager;
         this.auditLogger = auditLogger;
         this.anomalyDetector = anomalyDetector;
+        this.discordWebhookManager = discordWebhookManager;
 
         startDecayTask();
     }
@@ -46,7 +49,6 @@ public class ViolationManager {
         Player player = data.getPlayer();
         if (player == null || !player.isOnline()) return;
 
-        // Apply statistical anomaly weighting if statistical layer is enabled
         double finalVl = baseVl;
         String anomalyTag = "";
 
@@ -72,6 +74,11 @@ public class ViolationManager {
 
         // Staff Alerts
         broadcastAlert(player, check, totalVl, details + anomalyTag);
+
+        // Discord Webhook
+        if (discordWebhookManager != null) {
+            discordWebhookManager.sendViolationAlert(player, check, totalVl, details, player.getPing());
+        }
 
         // Evaluate Punishments
         punishmentManager.evaluatePunishment(player, check, totalVl);

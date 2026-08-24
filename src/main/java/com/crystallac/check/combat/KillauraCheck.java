@@ -10,11 +10,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 
 /**
- * Heuristic check for Killaura:
- * - Multi-target attacks within a single tick
- * - Instantaneous rotational snaps directly onto target hitboxes
- * - Attacks against targets outside vanilla field-of-view (behind player)
- * - Attacks without prior camera adjustment / arm swing
+ * Heuristic check for Killaura with active attack cancellation support.
  */
 public class KillauraCheck extends AbstractCheck {
 
@@ -22,36 +18,38 @@ public class KillauraCheck extends AbstractCheck {
         super(plugin, CheckType.KILLAURA);
     }
 
-    public void handleAttack(PlayerData data, Entity target) {
+    public boolean handleAttack(PlayerData data, Entity target) {
         if (!isEnabled() || data.getExemptionManager().isExemptFromCombat(versionAdapter)) {
-            return;
+            return false;
         }
 
         Player player = data.getPlayer();
-        if (player == null || target == null) return;
+        if (player == null || target == null) return false;
 
-        // 1. Check Multi-Target in single tick
+        boolean cancel = false;
+
+        // 1. Multi-Target in single tick
         int attacks = data.getAttacksThisTick();
         int maxAllowedTargets = plugin.getConfig().getInt("checks.killaura.max_targets_per_tick", 1);
         if (attacks > maxAllowedTargets) {
             flag(data, 4.0, String.format("Multi-Target (hits=%d, max=%d)", attacks, maxAllowedTargets));
-            return;
+            return true;
         }
 
-        // 2. Field-of-View (FOV) / Behind-back attack check
+        // 2. Field-of-View (FOV) / Behind-back attack
         Location eyeLoc = player.getEyeLocation();
         Vector toTarget = target.getLocation().toVector().subtract(eyeLoc.toVector()).normalize();
         Vector direction = eyeLoc.getDirection().normalize();
 
-        double dot = direction.dot(toTarget); // dot product in [-1.0, 1.0]
+        double dot = direction.dot(toTarget);
         double angleDegrees = Math.toDegrees(Math.acos(Math.max(-1.0, Math.min(1.0, dot))));
 
         if (angleDegrees > 105.0) {
             flag(data, 5.0, String.format("Hit outside FOV (angle=%.1f deg)", angleDegrees));
-            return;
+            return true;
         }
 
-        // 3. Instantaneous Angle Snap onto unseen/new target
+        // 3. Instantaneous Angle Snap onto new target
         double snapThreshold = getConfiguredThreshold("angle_snap_threshold", 38.5);
         if (data.getLastAttackedEntity() != null && !data.getLastAttackedEntity().getUniqueId().equals(target.getUniqueId())) {
             float deltaYaw = data.getDeltaYaw();
@@ -60,6 +58,7 @@ public class KillauraCheck extends AbstractCheck {
 
             if (totalRot > snapThreshold && angleDegrees < 12.0) {
                 flag(data, 3.5, String.format("Target Snap (rotDelta=%.1f deg, fov=%.1f deg)", totalRot, angleDegrees));
+                cancel = true;
             }
         }
 
@@ -71,5 +70,7 @@ public class KillauraCheck extends AbstractCheck {
                 flag(data, 2.0, String.format("Hit without swing/rotation (delay=%dms)", timeSinceSwing));
             }
         }
+
+        return cancel;
     }
 }

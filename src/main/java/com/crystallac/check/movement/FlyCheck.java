@@ -10,10 +10,7 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
 /**
- * Heuristic check for Fly and Ground Spoof (NoFall):
- * - Verifies maximum upward vertical jump acceleration
- * - Detects hovering/glide in mid-air violating gravity equations
- * - Detects client spoofing on-ground status in packet streams while in mid-air
+ * Heuristic check for Fly and Ground Spoof (NoFall) with active rubberband setback.
  */
 public class FlyCheck extends AbstractCheck {
 
@@ -33,12 +30,13 @@ public class FlyCheck extends AbstractCheck {
         double lastDeltaY = data.getLastDeltaY();
         Location loc = player.getLocation();
 
-        // Check if near climbables (ladders/vines/scaffolding) or slime blocks
         if (data.getExemptionManager().isNearClimbable(loc) || data.getExemptionManager().isNearSlime(loc)) {
             return;
         }
 
-        // 1. Upward acceleration check (Max vanilla jump is ~0.42)
+        boolean flagged = false;
+
+        // 1. Upward acceleration check
         double maxUpward = getConfiguredThreshold("max_upward_acceleration", 0.42);
         PotionEffect jumpBoost = player.getPotionEffect(PotionEffectType.JUMP_BOOST);
         if (jumpBoost != null) {
@@ -47,26 +45,29 @@ public class FlyCheck extends AbstractCheck {
 
         if (deltaY > maxUpward + 0.05) {
             flag(data, 3.0, String.format("Illegal upward deltaY=%.3f (max=%.3f)", deltaY, maxUpward));
-            return;
+            flagged = true;
         }
 
-        // 2. Mid-air Hover / Flight (violates gravity)
+        // 2. Mid-air Hover / Flight
         boolean verifyGravity = plugin.getConfig().getBoolean("checks.fly.verify_gravity", true);
-        if (verifyGravity && !data.isServerOnGround() && !data.isClientOnGround()) {
-            // In vanilla, falling deltaY decreases by ~0.08 per tick.
-            // If deltaY is positive or exactly 0.0 while in mid-air with no upward block support
+        if (!flagged && verifyGravity && !data.isServerOnGround() && !data.isClientOnGround()) {
             if (deltaY >= 0.0 && lastDeltaY <= 0.0 && deltaY < 0.35) {
                 flag(data, 2.5, String.format("Mid-air hover/glide (deltaY=%.3f, lastDeltaY=%.3f)", deltaY, lastDeltaY));
+                flagged = true;
             }
         }
 
         // 3. Ground Spoof / NoFall detection
         boolean groundSpoofCheck = plugin.getConfig().getBoolean("checks.fly.ground_spoof_detection", true);
-        if (groundSpoofCheck) {
-            // Client claims onGround is true in packet, but server verifies no block below within 0.5 blocks
+        if (!flagged && groundSpoofCheck) {
             if (data.isClientOnGround() && !data.isServerOnGround() && loc.getY() % 1.0 > 0.0001) {
                 flag(data, 2.0, String.format("Ground spoof (clientOnGround=true, serverOnGround=false, y=%.3f)", loc.getY()));
+                flagged = true;
             }
+        }
+
+        if (flagged && plugin.getConfig().getBoolean("settings.setbacks_enabled", true)) {
+            data.triggerSetback();
         }
     }
 }

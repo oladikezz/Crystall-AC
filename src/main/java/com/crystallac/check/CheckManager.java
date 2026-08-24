@@ -5,10 +5,17 @@ import com.crystallac.check.combat.AimbotCheck;
 import com.crystallac.check.combat.AutoclickerCheck;
 import com.crystallac.check.combat.KillauraCheck;
 import com.crystallac.check.combat.ReachCheck;
+import com.crystallac.check.inventory.InventoryMoveCheck;
 import com.crystallac.check.movement.FlyCheck;
 import com.crystallac.check.movement.SpeedCheck;
+import com.crystallac.check.packet.BadPacketsCheck;
 import com.crystallac.check.packet.TimerCheck;
+import com.crystallac.check.world.FastBreakCheck;
+import com.crystallac.check.world.FastPlaceCheck;
+import com.crystallac.check.world.ScaffoldCheck;
 import com.crystallac.data.PlayerData;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
 
 import java.util.Collection;
@@ -30,6 +37,11 @@ public class CheckManager {
     private final SpeedCheck speedCheck;
     private final FlyCheck flyCheck;
     private final TimerCheck timerCheck;
+    private final ScaffoldCheck scaffoldCheck;
+    private final FastPlaceCheck fastPlaceCheck;
+    private final BadPacketsCheck badPacketsCheck;
+    private final FastBreakCheck fastBreakCheck;
+    private final InventoryMoveCheck inventoryMoveCheck;
 
     public CheckManager(CrystallAC plugin) {
         this.killauraCheck = new KillauraCheck(plugin);
@@ -39,6 +51,11 @@ public class CheckManager {
         this.speedCheck = new SpeedCheck(plugin);
         this.flyCheck = new FlyCheck(plugin);
         this.timerCheck = new TimerCheck(plugin);
+        this.scaffoldCheck = new ScaffoldCheck(plugin);
+        this.fastPlaceCheck = new FastPlaceCheck(plugin);
+        this.badPacketsCheck = new BadPacketsCheck(plugin);
+        this.fastBreakCheck = new FastBreakCheck(plugin);
+        this.inventoryMoveCheck = new InventoryMoveCheck(plugin);
 
         register(killauraCheck);
         register(reachCheck);
@@ -47,6 +64,11 @@ public class CheckManager {
         register(speedCheck);
         register(flyCheck);
         register(timerCheck);
+        register(scaffoldCheck);
+        register(fastPlaceCheck);
+        register(badPacketsCheck);
+        register(fastBreakCheck);
+        register(inventoryMoveCheck);
     }
 
     private void register(AbstractCheck check) {
@@ -62,18 +84,21 @@ public class CheckManager {
     }
 
     // Event Dispatches
-    public void dispatchAttack(PlayerData data, Entity target) {
-        killauraCheck.handleAttack(data, target);
-        reachCheck.handleAttack(data, target);
+    public boolean dispatchAttack(PlayerData data, Entity target) {
+        boolean killauraCancel = killauraCheck.handleAttack(data, target);
+        boolean reachCancel = reachCheck.handleAttack(data, target);
+        return killauraCancel || reachCancel;
     }
 
     public void dispatchMovement(PlayerData data) {
         speedCheck.handleMovement(data);
         flyCheck.handleMovement(data);
+        inventoryMoveCheck.handleMovement(data);
     }
 
     public void dispatchRotation(PlayerData data) {
         aimbotCheck.handleRotation(data);
+        badPacketsCheck.handlePacket(data);
     }
 
     public void dispatchClick(PlayerData data) {
@@ -82,5 +107,15 @@ public class CheckManager {
 
     public void dispatchFlyingPacket(PlayerData data) {
         timerCheck.handleFlyingPacket(data);
+        badPacketsCheck.handlePacket(data);
+    }
+
+    public void dispatchBlockPlace(PlayerData data, Block placedBlock, Block placedAgainst, BlockFace face) {
+        fastPlaceCheck.handleBlockPlace(data);
+        scaffoldCheck.handleBlockPlace(data, placedBlock, placedAgainst, face);
+    }
+
+    public void dispatchBlockBreak(PlayerData data, Block block) {
+        fastBreakCheck.handleBlockBreak(data, block);
     }
 }

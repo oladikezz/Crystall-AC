@@ -46,7 +46,8 @@ public class PlayerDataManager {
     public void tickAll() {
         for (PlayerData data : dataMap.values()) {
             data.getExemptionManager().tick();
-            data.setAttacksThisTick(0); // Reset tick-based counters
+            data.setAttacksThisTick(0);
+            data.setBlockPlacesThisTick(0);
         }
     }
 }

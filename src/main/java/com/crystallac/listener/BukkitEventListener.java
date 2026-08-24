@@ -10,11 +10,15 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.*;
 
 /**
- * Intercepts high-level Bukkit events for movement, combat, interactions, and state exemptions.
+ * Intercepts high-level Bukkit events for movement, combat, interactions, blocks, and inventory states.
  */
 public class BukkitEventListener implements Listener {
 
@@ -48,10 +52,10 @@ public class BukkitEventListener implements Listener {
 
         data.updateMovement(event.getTo(), player.isOnGround());
 
-        // Dispatch movement physics check
+        // Movement & Inventory checks
         checkManager.dispatchMovement(data);
 
-        // Dispatch camera rotation / aimbot check if angles changed
+        // Camera rotation check
         if (data.getDeltaYaw() > 0.0f || data.getDeltaPitch() > 0.0f) {
             checkManager.dispatchRotation(data);
         }
@@ -63,7 +67,7 @@ public class BukkitEventListener implements Listener {
             return;
         }
 
-        // Shadow Ban Enforcement: Cancel attacks immediately for quarantined cheaters
+        // Shadow Ban Enforcement
         if (shadowBanManager.isShadowBanned(attacker)) {
             event.setCancelled(true);
             return;
@@ -77,7 +81,11 @@ public class BukkitEventListener implements Listener {
         data.setLastAttackTime(System.currentTimeMillis());
         data.setLastAttackedEntity(victim);
 
-        checkManager.dispatchAttack(data, victim);
+        // Active mitigation: cancel damage if reach or killaura detects severe anomaly
+        boolean cancelAttack = checkManager.dispatchAttack(data, victim);
+        if (cancelAttack && plugin.getConfig().getBoolean("settings.cancel_illegal_attacks", true)) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -92,10 +100,47 @@ public class BukkitEventListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPlace(BlockPlaceEvent event) {
+        PlayerData data = dataManager.getPlayerData(event.getPlayer());
+        if (data != null) {
+            checkManager.dispatchBlockPlace(data, event.getBlockPlaced(), event.getBlockAgainst(), event.getBlockAgainst().getFace(event.getBlockPlaced()));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBreak(BlockBreakEvent event) {
+        PlayerData data = dataManager.getPlayerData(event.getPlayer());
+        if (data != null) {
+            checkManager.dispatchBlockBreak(data, event.getBlock());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onInventoryOpen(InventoryOpenEvent event) {
+        if (event.getPlayer() instanceof Player player) {
+            PlayerData data = dataManager.getPlayerData(player);
+            if (data != null) {
+                data.setInventoryOpen(true);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onInventoryClose(InventoryCloseEvent event) {
+        if (event.getPlayer() instanceof Player player) {
+            PlayerData data = dataManager.getPlayerData(player);
+            if (data != null) {
+                data.setInventoryOpen(false);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
         PlayerData data = dataManager.getPlayerData(event.getPlayer());
         if (data != null) {
             data.getExemptionManager().handleTeleport();
+            data.setValidLocation(event.getTo());
         }
     }
 
@@ -104,6 +149,7 @@ public class BukkitEventListener implements Listener {
         PlayerData data = dataManager.getPlayerData(event.getPlayer());
         if (data != null) {
             data.getExemptionManager().handleRespawn();
+            data.setValidLocation(event.getRespawnLocation());
         }
     }
 

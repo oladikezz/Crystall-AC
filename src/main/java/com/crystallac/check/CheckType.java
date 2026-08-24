@@ -7,7 +7,12 @@ public enum CheckType {
     AIMBOT("Aimbot", CheckCategory.COMBAT),
     SPEED("Speed", CheckCategory.MOVEMENT),
     FLY("Fly", CheckCategory.MOVEMENT),
-    TIMER("Timer", CheckCategory.PACKET);
+    TIMER("Timer", CheckCategory.PACKET),
+    SCAFFOLD("Scaffold", CheckCategory.WORLD),
+    FASTPLACE("FastPlace", CheckCategory.WORLD),
+    BADPACKETS("BadPackets", CheckCategory.PACKET),
+    FASTBREAK("FastBreak", CheckCategory.WORLD),
+    INVENTORY("InventoryMove", CheckCategory.INVENTORY);
 
     private final String displayName;
     private final CheckCategory category;

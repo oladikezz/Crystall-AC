@@ -11,11 +11,20 @@ commands:
     description: Crystall Anti-Cheat master command
     aliases: [ac, crystallac]
     permission: crystallac.admin
-    usage: /ac <check|stats|ban|reload|alerts>
+    usage: /ac <gui|check|stats|freeze|unfreeze|spectate|ban|reload|alerts>
 
 permissions:
   crystallac.admin:
     description: Grants full access to all CrystallAC admin commands
+    default: op
+  crystallac.gui:
+    description: Allows opening the in-game admin dashboard GUI
+    default: op
+  crystallac.freeze:
+    description: Allows freezing players for audit
+    default: op
+  crystallac.spectate:
+    description: Allows entering silent spectate mode with real-time HUD
     default: op
   crystallac.alerts:
     description: Allows receiving in-game cheat alerts

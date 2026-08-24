@@ -12,7 +12,8 @@ import org.bukkit.entity.Player;
 import java.util.*;
 
 /**
- * Encapsulates all real-time movement, combat, rotation, packet balance, and statistical baseline state for a player.
+ * Encapsulates all real-time movement, combat, rotation, packet balance,
+ * block interaction, inventory, and statistical baseline state for a player.
  */
 public class PlayerData {
 
@@ -24,6 +25,7 @@ public class PlayerData {
     // Movement & Positions
     private Location from;
     private Location to;
+    private Location lastValidLocation;
     private double deltaX, deltaY, deltaZ, deltaXZ;
     private double lastDeltaX, lastDeltaY, lastDeltaZ, lastDeltaXZ;
     private boolean clientOnGround;
@@ -48,6 +50,15 @@ public class PlayerData {
     private int attacksThisTick = 0;
     private final Deque<Long> clickTimestamps = new ArrayDeque<>();
     private final List<Long> clickIntervals = new ArrayList<>();
+
+    // World & Blocks
+    private long lastBlockPlaceTime = 0;
+    private int blockPlacesThisTick = 0;
+    private long lastBlockBreakTime = 0;
+    private Location lastBrokenBlockLoc;
+
+    // Inventory
+    private boolean inventoryOpen = false;
 
     // Violation Levels
     private final Map<CheckType, Double> violationLevels = new EnumMap<>(CheckType.class);
@@ -87,6 +98,10 @@ public class PlayerData {
         this.from = (this.to != null) ? this.to.clone() : newTo.clone();
         this.to = newTo.clone();
 
+        if (this.lastValidLocation == null) {
+            this.lastValidLocation = from.clone();
+        }
+
         this.lastDeltaX = this.deltaX;
         this.lastDeltaY = this.deltaY;
         this.lastDeltaZ = this.deltaZ;
@@ -119,8 +134,20 @@ public class PlayerData {
             baselineTracker.recordRotationSample(Math.hypot(deltaYaw, deltaPitch));
         }
 
-        // Record feature snapshot periodically
         captureSnapshot(0.0);
+    }
+
+    public void setValidLocation(Location loc) {
+        if (loc != null) {
+            this.lastValidLocation = loc.clone();
+        }
+    }
+
+    public void triggerSetback() {
+        Player player = getPlayer();
+        if (player != null && player.isOnline() && lastValidLocation != null) {
+            player.teleport(lastValidLocation);
+        }
     }
 
     public synchronized void recordClick() {
@@ -136,7 +163,6 @@ public class PlayerData {
         }
         clickTimestamps.addLast(now);
 
-        // Purge clicks older than 1 second
         while (!clickTimestamps.isEmpty() && (now - clickTimestamps.peekFirst()) > 1000) {
             clickTimestamps.pollFirst();
         }
@@ -155,7 +181,7 @@ public class PlayerData {
     }
 
     public synchronized double getClickIntervalStdDev() {
-        if (clickIntervals.size() < 4) return 15.0; // Default human variance
+        if (clickIntervals.size() < 4) return 15.0;
 
         double sum = 0.0;
         for (long val : clickIntervals) {
@@ -206,9 +232,16 @@ public class PlayerData {
         return violationLevels.values().stream().mapToDouble(Double::doubleValue).sum();
     }
 
-    // Getters and Setters for combat/movement state
+    public void resetAllVL() {
+        for (CheckType type : CheckType.values()) {
+            violationLevels.put(type, 0.0);
+        }
+    }
+
+    // Getters and Setters
     public Location getFrom() { return from; }
     public Location getTo() { return to; }
+    public Location getLastValidLocation() { return lastValidLocation; }
     public double getDeltaX() { return deltaX; }
     public double getDeltaY() { return deltaY; }
     public double getDeltaZ() { return deltaZ; }
@@ -243,4 +276,17 @@ public class PlayerData {
     public void setLastSwingTime(long lastSwingTime) { this.lastSwingTime = lastSwingTime; }
     public int getAttacksThisTick() { return attacksThisTick; }
     public void setAttacksThisTick(int attacksThisTick) { this.attacksThisTick = attacksThisTick; }
+
+    public long getLastBlockPlaceTime() { return lastBlockPlaceTime; }
+    public void setLastBlockPlaceTime(long lastBlockPlaceTime) { this.lastBlockPlaceTime = lastBlockPlaceTime; }
+    public int getBlockPlacesThisTick() { return blockPlacesThisTick; }
+    public void setBlockPlacesThisTick(int count) { this.blockPlacesThisTick = count; }
+
+    public long getLastBlockBreakTime() { return lastBlockBreakTime; }
+    public void setLastBlockBreakTime(long lastBlockBreakTime) { this.lastBlockBreakTime = lastBlockBreakTime; }
+    public Location getLastBrokenBlockLoc() { return lastBrokenBlockLoc; }
+    public void setLastBrokenBlockLoc(Location loc) { this.lastBrokenBlockLoc = loc; }
+
+    public boolean isInventoryOpen() { return inventoryOpen; }
+    public void setInventoryOpen(boolean open) { this.inventoryOpen = open; }
 }

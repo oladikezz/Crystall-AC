@@ -8,12 +8,22 @@ settings:
   debug: false
   log_to_file: true
   log_to_database: true
+  setbacks_enabled: true         # Instantly rubberband/teleport players back on Fly/Speed violations
+  cancel_illegal_attacks: true   # Cancel damage events on severe Reach / Killaura flags
   lag_compensation:
-    max_ping_threshold: 400 # Ping in ms above which strict checks become lenient
-    min_server_tps: 18.0   # TPS below which movement checks enter lenient mode
+    max_ping_threshold: 400      # Ping in ms above which strict checks become lenient
+    min_server_tps: 18.0        # TPS below which movement checks enter lenient mode
     exemption_ticks_after_teleport: 20
     exemption_ticks_after_respawn: 40
     exemption_ticks_after_knockback: 15
+
+# ==============================================================================
+#                        DISCORD WEBHOOK INTEGRATION
+# ==============================================================================
+discord_webhook:
+  enabled: false
+  webhook_url: "YOUR_DISCORD_WEBHOOK_URL_HERE"
+  min_vl_to_send: 15.0
 
 # ==============================================================================
 #                           HEURISTIC CORE CHECKS
@@ -23,35 +33,26 @@ checks:
     enabled: true
     max_vl: 100
     decay_amount: 1.0
-    # Checks for instantaneous angle snaps directly onto unseen targets
     angle_snap_threshold: 38.5
-    # Max allowed target switches in a single tick
     max_targets_per_tick: 1
-    # Check for hits without proper camera rotation prior to swing
     require_rotation_on_swing: true
 
   reach:
     enabled: true
     max_vl: 100
     decay_amount: 1.0
-    # Maximum base reach in survival mode (vanilla standard is 3.0 blocks)
     base_max_reach: 3.05
-    # Dynamic expansion for ping / latency compensation
     ping_compensation_multiplier: 0.0035
-    # Hitbox bounding box boundary expansion margin
     hitbox_expansion: 0.1
 
   speed:
     enabled: true
     max_vl: 100
     decay_amount: 1.0
-    # Base walking/sprinting speeds (blocks/tick)
     base_walk_speed: 0.286
     base_sprint_speed: 0.362
     base_sprint_jump_speed: 0.612
-    # Speed potion bonus multiplier per level (vanilla = +20%)
     speed_potion_multiplier: 0.20
-    # Friction allowances
     ice_speed_multiplier: 1.45
     soul_sand_modifier: 0.40
 
@@ -59,83 +60,82 @@ checks:
     enabled: true
     max_vl: 100
     decay_amount: 1.0
-    # Max allowed continuous upward motion without jump/ladder/climbable
     max_upward_acceleration: 0.42
-    # Gravity constant verification (vanilla deltaY gravity ~ 0.08)
     verify_gravity: true
-    # Detection of client spoofing on-ground status in packets
     ground_spoof_detection: true
 
   autoclicker:
     enabled: true
     max_vl: 100
     decay_amount: 0.8
-    # Absolute maximum allowable CPS
     max_cps: 18
-    # Minimum standard deviation in ms for high CPS (human jitter threshold)
     min_deviation_ms: 4.8
-    # Sample window size (clicks)
     sample_window: 20
 
   aimbot:
     enabled: true
     max_vl: 100
     decay_amount: 1.0
-    # GCD (Greatest Common Divisor) sensitivity check
     check_gcd_sensitivity: true
-    # Detection of rigid lock-on without human micro-corrections
     min_rotation_smoothness: 0.08
-    # Max sudden yaw acceleration (degrees/tick)
     max_yaw_acceleration: 45.0
 
   timer:
     enabled: true
     max_vl: 100
     decay_amount: 1.5
-    # Allowed packet balance drift in milliseconds (positive or negative)
     max_balance_drift_ms: 50.0
-    # Sample period in server ticks
     sample_ticks: 20
+
+  scaffold:
+    enabled: true
+    max_vl: 100
+    decay_amount: 1.0
+
+  fastplace:
+    enabled: true
+    max_vl: 100
+    decay_amount: 1.0
+
+  badpackets:
+    enabled: true
+    max_vl: 100
+    decay_amount: 2.0
+
+  fastbreak:
+    enabled: true
+    max_vl: 100
+    decay_amount: 1.0
+
+  inventory:
+    enabled: true
+    max_vl: 100
+    decay_amount: 1.0
 
 # ==============================================================================
 #              UNSUPERVISED STATISTICAL ANOMALY DETECTION LAYER
 # ==============================================================================
-# Builds rolling baseline statistics (EWMA, Z-Score) for each player in real-time.
-# Requires NO pre-existing dataset or offline model training.
 statistical_layer:
   enabled: true
-  # Exponential smoothing factor (alpha) for EWMA (0.0 < alpha <= 1.0)
   ewma_alpha: 0.15
-  # Z-Score outlier threshold (|Z| > 3.2 indicates ~99.9% statistical anomaly)
   zscore_threshold: 3.2
-  # Window size for player baseline metrics
   metrics_window_size: 100
-  # VL multiplier applied to heuristic flags when player is statistically anomalous
   anomaly_vl_multiplier: 1.5
-  # Enable global baseline synchronization across all active server players
   sync_global_baseline: true
 
 # ==============================================================================
 #            INCREMENTAL RETRAINING MODULE (CONFIRMED BANS)
 # ==============================================================================
-# Collects 1-5 min feature buffers from players banned by moderators via /ac ban.
-# When enough samples are gathered, fine-tunes heuristic thresholds.
-# DISABLED by default until minimum sample count is reached.
 incremental_ml:
-  enabled: false # Set true once you wish auto-tuning to engage after gathering samples
-  # Minimum labeled bans required before activating model fine-tuning
+  enabled: false
   min_samples_to_retrain: 25
-  # Duration of historical feature buffer to save on manual ban (in seconds)
   feature_buffer_duration_seconds: 300
-  # Maximum percentage adjustment to heuristic thresholds (safety cap: 15%)
   max_threshold_adjustment_percent: 0.15
-  # Auto-tune learning rate
   learning_rate: 0.01
 
 # ==============================================================================
 #                         PUNISHMENT SYSTEM (LADDER)
 # ==============================================================================
-# Multi-tier response ladder based on accumulated Violation Level (VL)
 punishments:
   decay_interval_seconds: 2
   
@@ -153,14 +153,11 @@ punishments:
   tier_3_shadow_ban:
     vl_threshold: 45
     enabled: true
-    # Duration of shadow ban in minutes (0 for permanent until restart/unban)
     duration_minutes: 10
-    # Shadow-banned players have their attacks cancelled and are hidden from normal players
     cancel_outgoing_damage: true
     hide_from_tab_and_world: true
 
   tier_4_ban:
     vl_threshold: 70
     enabled: true
-    # Command executed by console on ban
     ban_command: "ban %player% [CrystallAC] Unfair Advantage detected: %check% (VL: %vl%)"
