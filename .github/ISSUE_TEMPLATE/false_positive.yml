@@ -1,0 +1,23 @@
+name: False Positive Report
+description: Report an incorrect cheat detection or setback
+title: "[FP]: "
+labels: ["false-positive", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Thank you for reporting a false positive. Please fill in all fields below.
+  - type: input
+    id: check_name
+    attributes:
+      label: Check Name
+      description: What check triggered the alert (e.g. Fly, Speed, Aimbot, Reach)?
+      placeholder: e.g. Speed Type A
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Player Activity & Context
+      description: What was the player doing when flagged (elytra, ice, potion effects, lag)?
+    validations:
+      required: true
