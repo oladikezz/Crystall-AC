@@ -1,25 +1,28 @@
 package com.crystallac.statistical;
 
+import org.crystall.analytics.StreamingZScoreDetector;
+
 /**
  * Calculates statistical Z-scores and flags anomalous outliers based on
- * personal and global baselines.
+ * personal and global baselines using the decoupled {@link StreamingZScoreDetector}.
  */
 public class AnomalyDetector {
 
     private final double zScoreThreshold;
     private final GlobalBaselineTracker globalBaseline;
+    private final StreamingZScoreDetector zScoreDetector;
 
     public AnomalyDetector(double zScoreThreshold, GlobalBaselineTracker globalBaseline) {
         this.zScoreThreshold = zScoreThreshold;
         this.globalBaseline = globalBaseline;
+        this.zScoreDetector = new StreamingZScoreDetector(zScoreThreshold);
     }
 
     /**
      * Calculates personal Z-score: Z = (x - mu) / sigma
      */
     public double calculatePersonalZScore(double value, double mean, double stdDev) {
-        if (stdDev <= 0.0001) return 0.0;
-        return (value - mean) / stdDev;
+        return zScoreDetector.evaluate(value, mean, stdDev).zScore();
     }
 
     /**
@@ -41,21 +44,26 @@ public class AnomalyDetector {
         }
 
         // Z-score for CPS
-        double zCps = calculatePersonalZScore(currentCps, tracker.getEwmaCps(), tracker.getCpsStdDev());
+        StreamingZScoreDetector.AnomalyScore cpsScore = zScoreDetector.evaluate(
+                currentCps, tracker.getEwmaCps(), tracker.getCpsStdDev());
         
         // Z-score for Low click jitter (Autoclickers show unnaturally low variance)
-        double zLowJitter = (tracker.getEwmaCpsStdDev() - currentCpsStdDev) / (tracker.getCpsStdDev() + 0.1);
+        double jitterRefMean = tracker.getEwmaCpsStdDev();
+        double jitterRefStdDev = tracker.getCpsStdDev() + 0.1;
+        double zLowJitter = (jitterRefMean - currentCpsStdDev) / jitterRefStdDev;
 
         // Z-score for Rotation Jump
-        double zRot = calculatePersonalZScore(currentRotDelta, tracker.getEwmaRotationDelta(), tracker.getRotationStdDev());
+        StreamingZScoreDetector.AnomalyScore rotScore = zScoreDetector.evaluate(
+                currentRotDelta, tracker.getEwmaRotationDelta(), tracker.getRotationStdDev());
 
         // Peak Z-score
-        double maxZ = Math.max(Math.abs(zCps), Math.max(zLowJitter, Math.abs(zRot)));
+        double maxZ = Math.max(Math.abs(cpsScore.zScore()), Math.max(zLowJitter, Math.abs(rotScore.zScore())));
 
         boolean isAnomalous = maxZ >= zScoreThreshold;
         double multiplier = isAnomalous ? 1.5 + Math.min(1.0, (maxZ - zScoreThreshold) * 0.2) : 1.0;
 
-        String description = String.format("zCPS=%.2f, zJitter=%.2f, zRot=%.2f (maxZ=%.2f)", zCps, zLowJitter, zRot, maxZ);
+        String description = String.format("zCPS=%.2f, zJitter=%.2f, zRot=%.2f (maxZ=%.2f)",
+                cpsScore.zScore(), zLowJitter, rotScore.zScore(), maxZ);
         return new AnomalyResult(isAnomalous, maxZ, multiplier, description);
     }
 
